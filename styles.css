@@ -1,0 +1,389 @@
+/*
+  Bullseye — Aim Trainer (RE-SCAFFOLD v2)
+
+  Goals:
+  - HUD on top
+  - Boxed stage in the middle
+  - Controls docked at bottom
+  - Cursor rules:
+      * stage = crosshair always
+      * buttons/inputs = pointer
+*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #0b0f14;
+  color: #e8eef5;
+}
+
+/* =========================
+   App layout
+   ========================= */
+.app {
+  min-height: 100vh;
+  display: grid;
+
+  /* top HUD, middle stage, bottom controls */
+  grid-template-rows: auto 1fr auto;
+
+  gap: 10px;
+  padding: 10px;
+}
+
+/* =========================
+   HUD
+   ========================= */
+.hud {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.hud__left,
+.hud__right {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hud__stat {
+  min-width: 110px;
+}
+
+.hud__label {
+  font-size: 12px;
+  opacity: 0.75;
+  margin-bottom: 2px;
+}
+
+.hud__value {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+/* =========================
+   HUD debug / run stats
+   ========================= */
+.hud__debug {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.hud__debug strong {
+  font-weight: 700;
+}
+
+
+/* =========================
+   Stage (boxed)
+   ========================= */
+.stageWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+
+  /* keeps stage nicely boxed on desktop */
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+
+  /* give it a solid min height */
+  min-height: 55vh;
+
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255,255,255,0.06), transparent 38%),
+    radial-gradient(circle at 75% 65%, rgba(255,255,255,0.05), transparent 40%),
+    linear-gradient(0deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03));
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  overflow: hidden;
+
+  user-select: none;
+  touch-action: manipulation;
+
+  /* ✅ Cursor rule: crosshair on stage always */
+  cursor: crosshair;
+}
+
+/* =========================
+   Overlay
+   ========================= */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  padding: 14px;
+}
+
+.overlay__card {
+  max-width: 520px;
+  width: 100%;
+  border-radius: 14px;
+  padding: 16px;
+
+  background: rgba(11, 15, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.overlay__title {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.overlay__text {
+  margin: 6px 0;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+.overlay__hint {
+  margin-top: 10px;
+  opacity: 0.75;
+}
+
+/* =========================
+   Bottom controls
+   ========================= */
+.controls {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+
+  display: grid;
+  gap: 10px;
+}
+
+.controls__group {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.controls__legend {
+  padding: 0 6px;
+  opacity: 0.85;
+  font-size: 12px;
+}
+
+.controls__radio,
+.controls__checkbox {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: 14px;
+  font-size: 14px;
+}
+
+.controls__row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.controls__tiny {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+.controls__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.controls__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* ✅ Hide tracking options until tracking is selected */
+.is-hidden {
+  display: none !important;
+}
+
+/* =========================
+   Pointer rules (only for UI)
+   ========================= */
+button,
+input[type="radio"],
+input[type="checkbox"],
+input[type="range"],
+label {
+  cursor: pointer;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 800;
+
+  background: #e8eef5;
+  color: #0b0f14;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* =========================
+   Targets (single bullseye)
+   ========================= */
+.target {
+  position: absolute;
+  transform: translate(-50%, -50%);
+
+  width: var(--size, 90px);
+  height: var(--size, 90px);
+
+  /* stage already has crosshair, this is just extra */
+  cursor: crosshair;
+
+  will-change: width, height, transform;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.4));
+}
+
+.target img {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+
+  pointer-events: none;
+  user-drag: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.target__bullseye {
+  width: 100%;
+  height: 100%;
+}
+
+/* =========================
+   Shield overlay (CSS-only)
+   ========================= */
+
+/* When a target has a shield, draw a centered circle overlay */
+/* =========================
+   Bubble-style shield
+   ========================= */
+.target.has-shield::after {
+  content: "";
+  position: absolute;
+
+  width: 120%;
+  height: 120%;
+
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+
+  border-radius: 50%;
+
+  /* Bubble gradient */
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(255, 255, 255, 0.55),
+      rgba(255, 255, 255, 0.15) 25%,
+      rgba(140, 180, 255, 0.25) 45%,
+      rgba(90, 140, 220, 0.35) 70%,
+      rgba(60, 100, 180, 0.45)
+    );
+
+  /* Bubble rim + depth */
+  box-shadow:
+    inset 0 0 12px rgba(255, 255, 255, 0.35),
+    inset 0 0 30px rgba(80, 130, 220, 0.45),
+    0 0 12px rgba(120, 180, 255, 0.45);
+
+  /* Slight transparency */
+  opacity: 0.85;
+
+  pointer-events: none;
+}
+
+.target.has-shield.weak::after {
+  opacity: 0.55;
+  box-shadow:
+    inset 0 0 10px rgba(255, 255, 255, 0.25),
+    inset 0 0 24px rgba(100, 150, 255, 0.35),
+    0 0 8px rgba(120, 180, 255, 0.3);
+}
+
+
+@keyframes bubbleFloat {
+  0%   { transform: translate(-50%, -50%) scale(1); }
+  50%  { transform: translate(-50%, -50%) scale(1.02); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+.target.has-shield::after {
+  animation: bubbleFloat 2.5s ease-in-out infinite;
+}
+
+
+/* =========================
+   Desktop layout tweak
+   ========================= */
+@media (min-width: 900px) {
+  .app {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .hud__value {
+    font-size: 20px;
+  }
+
+  .controls {
+    grid-template-columns: 1.2fr 1.2fr 1.6fr auto;
+    align-items: start;
+  }
+}
+

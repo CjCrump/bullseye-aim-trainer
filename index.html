@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Bullseye — Aim Trainer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <!--
+      Bullseye — Aim Trainer (RE-SCAFFOLD v2)
+      Layout goal:
+      - Top: HUD (current run + high scores)
+      - Middle: boxed play area (stage)
+      - Bottom: controls (mode, options, slider, start/restart)
+    -->
+
+    <main class="app" aria-label="Bullseye Aim Trainer">
+      <!-- ======================
+           TOP HUD (stays on top)
+           ====================== -->
+      <header class="hud" aria-label="Game stats">
+        <div class="hud__left">
+          <div class="hud__stat">
+            <div class="hud__label">Points</div>
+            <div class="hud__value" id="pointsValue">0</div>
+          </div>
+
+          <div class="hud__stat">
+            <div class="hud__label">Accuracy</div>
+            <div class="hud__value" id="accuracyValue">0%</div>
+          </div>
+
+          <div class="hud__stat">
+            <div class="hud__label">Time</div>
+            <div class="hud__value" id="timeValue">60.0</div>
+          </div>
+
+          <div class="hud__stat">
+            <div class="hud__label">Expired (Timed)</div>
+            <div class="hud__value" id="expiredMissesValue">0</div>
+          </div>
+          <div class="hud__debug">
+            <span>Outer: <strong id="hitsOuterValue">0</strong></span>
+            <span>Center: <strong id="hitsCenterValue">0</strong></span>
+            <span>Misses: <strong id="clickMissesValue">0</strong></span>
+            <span>Shield: <strong id="hitsShieldValue">0</strong></span>
+          </div>
+
+        </div>
+
+        <div class="hud__right">
+          <div class="hud__stat">
+            <div class="hud__label">High (Timed)</div>
+            <div class="hud__value" id="highTimedValue">—</div>
+          </div>
+
+          <div class="hud__stat">
+            <div class="hud__label">High (Tracking)</div>
+            <div class="hud__value" id="highTrackingValue">—</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ======================
+           STAGE (boxed middle)
+           ====================== -->
+      <section class="stageWrap" aria-label="Play area">
+        <div id="stage" class="stage" role="application" tabindex="0"></div>
+
+        <!-- Overlay: start prompt, game over, results -->
+        <div id="overlay" class="overlay" aria-live="polite">
+          <div class="overlay__card">
+            <h1 class="overlay__title">Bullseye — Aim Trainer</h1>
+            <p class="overlay__text">
+              Timed Mode: click targets before they expire. If <strong>5 targets expire</strong>
+              (not clicked), it’s game over (no score saved).
+            </p>
+            <p class="overlay__text">
+              Scoring: <strong>Outer red = 1</strong>, <strong>Center black = 2</strong>.
+              Accuracy is based on hit clicks vs click misses.
+            </p>
+            <p class="overlay__hint">Press <strong>Start</strong> to begin.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================
+           BOTTOM CONTROLS
+           ====================== -->
+      <section class="controls controls--bottom" aria-label="Game controls">
+        <!-- Mode select -->
+        <fieldset class="controls__group">
+          <legend class="controls__legend">Mode</legend>
+
+          <label class="controls__radio">
+            <input type="radio" name="mode" id="modeTimed" value="timed" checked />
+            Timed
+          </label>
+
+          <label class="controls__radio">
+            <input type="radio" name="mode" id="modeTracking" value="tracking" />
+            Tracking
+          </label>
+        </fieldset>
+
+        <!-- Tracking options (HIDDEN unless tracking selected) -->
+        <fieldset class="controls__group is-hidden" id="trackingOptionsGroup">
+          <legend class="controls__legend">Tracking Options</legend>
+
+          <label class="controls__checkbox">
+            <input type="checkbox" id="shieldsToggle" />
+            Shields ON (2 HP)
+          </label>
+        </fieldset>
+
+        <!-- Spawn curve tuning -->
+        <fieldset class="controls__group">
+          <legend class="controls__legend">Timed Spawn Curve</legend>
+
+          <label class="controls__row" for="difficultySlider">
+            Difficulty:
+            <strong id="difficultyValue">5</strong>
+          </label>
+
+          <input
+            id="difficultySlider"
+            type="range"
+            min="1"
+            max="10"
+            value="5"
+            step="1"
+            aria-label="Timed mode difficulty"
+          />
+
+          <div class="controls__tiny" id="difficultyHint">
+            Slower → Faster spawn ramp (affects only Timed mode)
+          </div>
+        </fieldset>
+
+        <!-- Start / Restart -->
+        <div class="controls__actions">
+          <button id="startBtn" type="button">Start</button>
+          <button id="restartBtn" type="button" disabled>Restart</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

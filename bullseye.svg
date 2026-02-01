@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="47.244095"
+   height="47.244095"
+   viewBox="0 0 12.5 12.5"
+   version="1.1"
+   id="svg5"
+   sodipodi:docname="bullseye.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview30"
+     pagecolor="#ffffff"
+     bordercolor="#111111"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="false"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     borderlayer="false"
+     showborder="false"
+     inkscape:zoom="0.91490603"
+     inkscape:cx="396.76206"
+     inkscape:cy="562.35284"
+     inkscape:window-width="2494"
+     inkscape:window-height="1371"
+     inkscape:window-x="66"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg5" />
+  <defs
+     id="defs2" />
+  <g
+     id="layer1"
+     transform="translate(-0.03044224,-0.0261178)">
+    <circle
+       style="fill:#ff0000;stroke-width:0.261653"
+       id="path192"
+       cx="6.2804422"
+       cy="6.2761178"
+       r="6.25" />
+    <circle
+       style="fill:#2b0000;stroke-width:0.259719"
+       id="path194"
+       cx="6.2804422"
+       cy="6.2761178"
+       r="3" />
+  </g>
+</svg>
