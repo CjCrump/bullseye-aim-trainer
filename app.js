@@ -1,32 +1,22 @@
 /* ==========================================================
-   Bullseye — Aim Trainer (v3) ✅ Timed + Tracking + Shields
+   Bullseye — Aim Trainer (v4)  ·  ChanceITstudio
    ----------------------------------------------------------
-   TIMED MODE:
-   - Targets shrink for 3s then expire
-   - If 5 targets expire (not clicked) => GAME OVER (no score saved)
-   - Spawn curve controlled by slider (difficulty 1..10)
+   Vanilla JS. No framework, no build step.
 
-   TRACKING MODE:
-   - Targets move (no shrinking)
-   - Target HP = 4
-   - Center hit = 2 points = 2 damage
-   - Outer hit = 1 point = 1 damage
-   - Shields optional (toggle):
-       Shield HP = 2
-       While shieldHp > 0:
-         - ANY hit = 1 point
-         - Shield takes 1 damage
-         - Shield hits count as hits for accuracy
-   - Overwhelm rule:
-       if targets on screen > 5 => GAME OVER (no score saved)
+   MODES
+   - Timed:    targets shrink over 3s then expire. Lose 1 life per
+               expired target; 5 expired = game over (no score saved).
+   - Tracking: targets move and have HP. Damage = points. Optional
+               shields (always 1pt, absorb 1 hit). More than 5 targets
+               on screen = game over (no score saved).
 
-   HIGH SCORES:
-   - Saved ONLY if you finish full 60s without game over
-   - Comparison: points > accuracy > center hits
+   SCORING:  outer = 1pt, center = 2pt. Center radius = 0.4 of target.
+   HIGH SCORES: saved only on finishing a full 60s run.
+               ranked by points > accuracy > center hits.
 
-   Assets expected:
-   - bullseye.svg
-   - shield.svg
+   v4 polish: 3·2·1 countdown, reaction-time tracking, synthesized
+   sound + mute, floating impact readouts, pause/resume, persisted
+   settings, new-best celebration.
    ========================================================== */
 
 /* =========================
@@ -34,24 +24,25 @@
    ========================= */
 const stage = document.getElementById("stage");
 const overlay = document.getElementById("overlay");
+const countdownEl = document.getElementById("countdown");
+const countdownNum = document.getElementById("countdownNum");
 
 const pointsValue = document.getElementById("pointsValue");
 const accuracyValue = document.getElementById("accuracyValue");
+const reactValue = document.getElementById("reactValue");
 const timeValue = document.getElementById("timeValue");
-const expiredMissesValue = document.getElementById("expiredMissesValue");
+const livesValue = document.getElementById("livesValue");
+const livesLabel = livesValue.parentElement.querySelector(".gauge__label");
 
 const highTimedValue = document.getElementById("highTimedValue");
 const highTrackingValue = document.getElementById("highTrackingValue");
 
-const hitsOuterValue = document.getElementById("hitsOuterValue");
-const hitsCenterValue = document.getElementById("hitsCenterValue");
-const clickMissesValue = document.getElementById("clickMissesValue");
-
-// You added this span in index.html ✅
-const hitsShieldValue = document.getElementById("hitsShieldValue");
+const telemetryMode = document.getElementById("telemetryMode");
+const telemetryStatus = document.getElementById("telemetryStatus");
 
 const startBtn = document.getElementById("startBtn");
-const restartBtn = document.getElementById("restartBtn");
+const restartBtn = document.getElementById("restartBtn"); // doubles as Pause/Resume
+const muteBtn = document.getElementById("muteBtn");
 
 const modeTimed = document.getElementById("modeTimed");
 const modeTracking = document.getElementById("modeTracking");
@@ -59,126 +50,188 @@ const shieldsToggle = document.getElementById("shieldsToggle");
 const trackingOptionsGroup = document.getElementById("trackingOptionsGroup");
 
 const difficultySlider = document.getElementById("difficultySlider");
-const difficultyValue = document.getElementById("difficultyValue");
-const difficultyHint = document.getElementById("difficultyHint");
+const difficultyTier = document.getElementById("difficultyTier");
 
 /* =========================
    2) Constants
    ========================= */
 const GAME_MS = 60_000;
 
-// Timed mode target behavior
+// Timed mode
 const TARGET_LIFETIME_MS = 3_000;
 const EXPIRED_LIMIT = 5;
 
-// Bullseye math (locked)
+// Bullseye scoring geometry (locked)
 const CENTER_RADIUS_RATIO = 0.4;
 
-// Timed visual sizes
+// Sizes
 const TARGET_START_SIZE_MIN = 58;
 const TARGET_START_SIZE_MAX = 84;
 const TARGET_MIN_SIZE = 20;
-
-// Tracking visual sizes
 const TRACKING_SIZE_MIN = 58;
 const TRACKING_SIZE_MAX = 84;
 
 // Tracking rules
 const TRACKING_TARGET_HP = 4;
 const TRACKING_SHIELD_HP = 2;
-const TRACKING_OVERWHELM_LIMIT = 5; // if > 5 targets on screen => game over
+const TRACKING_OVERWHELM_LIMIT = 5;
 
-// LocalStorage keys (versioned)
-const LS_KEY_TIMED = "bullseye_high_timed_v3";
-const LS_KEY_TRACKING = "bullseye_high_tracking_v3";
+// Reaction grading (ms)
+const REACT_FAST = 300;
+const REACT_SLOW = 450;
 
-/*
-  Timed spawn curve slider (1..10):
-  You picked:
-    easy = 2000,550,3
-    hard = 1200,350,7.5
-*/
+// Spawn curves (slider 1..10 lerps easy -> hard)
 const CURVE_EASY = { maxMs: 2000, minMs: 550, rampPerSec: 3 };
 const CURVE_HARD = { maxMs: 1200, minMs: 350, rampPerSec: 7.5 };
-
-/* Tracking spawn curve (intentionally slower than timed) */
 const TRACK_CURVE_EASY = { maxMs: 2600, minMs: 900, rampPerSec: 2.0 };
 const TRACK_CURVE_HARD = { maxMs: 2000, minMs: 650, rampPerSec: 3.6 };
+
+const TIERS = [
+  "", "Relaxed", "Relaxed", "Steady", "Steady",
+  "Sharp", "Sharp", "Rapid", "Rapid", "Brutal", "Insane",
+];
+
+// localStorage keys
+const LS_KEY_TIMED = "bullseye_high_timed_v4";
+const LS_KEY_TRACKING = "bullseye_high_tracking_v4";
+const LS_KEY_SETTINGS = "bullseye_settings_v4";
 
 /* =========================
    3) State
    ========================= */
 let running = false;
-let currentMode = "timed"; // "timed" | "tracking"
+let paused = false;
+let countingDown = false;
+let currentMode = "timed";
 
 let startTimeMs = 0;
 let lastTickMs = 0;
+let pauseStartedMs = 0;
 
 let rafId = null;
 let spawnTimeoutId = null;
+let countdownTimers = [];
 
 // Stats
 let points = 0;
 let hitsOuter = 0;
 let hitsCenter = 0;
-let hitsShield = 0; // ✅ shield hits count as hits
+let hitsShield = 0;
 let clickMisses = 0;
 let expiredMisses = 0;
+let reactionSamples = [];
 
-// Targets (one array used for both modes)
-// Timed target fields: { id, el, bornAtMs, expiresAtMs, startSize }
-// Tracking target fields: { id, el, x, y, vx, vy, size, hp, shieldHp }
 let targets = [];
 
-// Current curves (computed from slider)
 let timedCurve = { ...CURVE_EASY };
 let trackingCurve = { ...TRACK_CURVE_EASY };
+
+let muted = false;
 
 /* =========================
    4) Helpers
    ========================= */
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function formatPercent(p) {
-  return `${(p * 100).toFixed(1)}%`;
-}
-
-function elapsedSeconds(nowMs) {
-  return (nowMs - startTimeMs) / 1000;
-}
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const lerp = (a, b, t) => a + (b - a) * t;
+const formatPercent = (p) => `${(p * 100).toFixed(1)}%`;
+const elapsedSeconds = (nowMs) => (nowMs - startTimeMs) / 1000;
 
 function computeAccuracy() {
-  const hitsTotal = hitsOuter + hitsCenter + hitsShield;
-  const attempts = hitsTotal + clickMisses;
-  if (attempts === 0) return 0;
-  return hitsTotal / attempts;
+  const hits = hitsOuter + hitsCenter + hitsShield;
+  const attempts = hits + clickMisses;
+  return attempts === 0 ? 0 : hits / attempts;
 }
-
+function avgReaction() {
+  if (reactionSamples.length === 0) return null;
+  return Math.round(reactionSamples.reduce((a, b) => a + b, 0) / reactionSamples.length);
+}
+function bestReaction() {
+  return reactionSamples.length ? Math.round(Math.min(...reactionSamples)) : null;
+}
 function currentTimeLeftMs() {
   if (!running) return GAME_MS;
-  const now = performance.now();
-  return GAME_MS - (now - startTimeMs);
+  return GAME_MS - (performance.now() - startTimeMs);
 }
 
 /* =========================
-   5) Difficulty slider -> curves
+   5) Sound (Web Audio, synthesized — no asset files)
    ========================= */
-function difficulty01() {
-  // slider 1..10 -> t 0..1
-  const diff = Number(difficultySlider.value);
-  return (diff - 1) / 9;
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch {
+      audioCtx = null;
+    }
+  }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+function tone({ freq, dur = 0.08, type = "triangle", gain = 0.18, slideTo = null }) {
+  if (muted || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const amp = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  amp.gain.setValueAtTime(0.0001, t0);
+  amp.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(amp).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+const sfx = {
+  outer: () => tone({ freq: 520, dur: 0.06, type: "square", gain: 0.12 }),
+  center: () => tone({ freq: 880, slideTo: 1320, dur: 0.11, type: "triangle", gain: 0.18 }),
+  shield: () => tone({ freq: 640, dur: 0.07, type: "sine", gain: 0.14 }),
+  miss: () => tone({ freq: 150, dur: 0.09, type: "sine", gain: 0.16 }),
+  expire: () => tone({ freq: 400, slideTo: 180, dur: 0.16, type: "sawtooth", gain: 0.12 }),
+  over: () => {
+    tone({ freq: 220, slideTo: 90, dur: 0.5, type: "sawtooth", gain: 0.16 });
+  },
+  newbest: () => {
+    [660, 880, 1320].forEach((f, i) =>
+      setTimeout(() => tone({ freq: f, dur: 0.14, type: "triangle", gain: 0.16 }), i * 110)
+    );
+  },
+  tick: () => tone({ freq: 600, dur: 0.07, type: "square", gain: 0.1 }),
+  go: () => tone({ freq: 1000, dur: 0.16, type: "triangle", gain: 0.16 }),
+};
+
+/* =========================
+   6) Settings persistence
+   ========================= */
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY_SETTINGS) || "{}");
+    if (s.mode === "tracking") { modeTracking.checked = true; }
+    else { modeTimed.checked = true; }
+    if (typeof s.difficulty === "number") difficultySlider.value = String(clamp(s.difficulty, 1, 10));
+    shieldsToggle.checked = !!s.shields;
+    muted = !!s.muted;
+  } catch {
+    /* defaults already in HTML */
+  }
+}
+function saveSettings() {
+  const s = {
+    mode: modeTracking.checked ? "tracking" : "timed",
+    difficulty: Number(difficultySlider.value),
+    shields: shieldsToggle.checked,
+    muted,
+  };
+  try { localStorage.setItem(LS_KEY_SETTINGS, JSON.stringify(s)); } catch {}
 }
 
+/* =========================
+   7) Difficulty
+   ========================= */
+function difficulty01() {
+  return (Number(difficultySlider.value) - 1) / 9;
+}
 function applyDifficultyFromUI() {
   const diff = Number(difficultySlider.value);
   const t = difficulty01();
@@ -188,206 +241,206 @@ function applyDifficultyFromUI() {
     minMs: Math.round(lerp(CURVE_EASY.minMs, CURVE_HARD.minMs, t)),
     rampPerSec: lerp(CURVE_EASY.rampPerSec, CURVE_HARD.rampPerSec, t),
   };
-
-  // Tracking also scales with the same slider, but stays slower overall
   trackingCurve = {
     maxMs: Math.round(lerp(TRACK_CURVE_EASY.maxMs, TRACK_CURVE_HARD.maxMs, t)),
     minMs: Math.round(lerp(TRACK_CURVE_EASY.minMs, TRACK_CURVE_HARD.minMs, t)),
     rampPerSec: lerp(TRACK_CURVE_EASY.rampPerSec, TRACK_CURVE_HARD.rampPerSec, t),
   };
-
-  difficultyValue.textContent = String(diff);
-
-  // Show exact numbers so tuning is transparent
-  difficultyHint.textContent =
-    `Timed: start ${timedCurve.maxMs}ms • min ${timedCurve.minMs}ms • ramp ${timedCurve.rampPerSec.toFixed(1)}ms/s` +
-    ` | Tracking: start ${trackingCurve.maxMs}ms • min ${trackingCurve.minMs}ms • ramp ${trackingCurve.rampPerSec.toFixed(1)}ms/s`;
+  difficultyTier.textContent = TIERS[diff] || "Sharp";
 }
-
-function timedSpawnDelayMs(elapsedSec) {
-  const delay = timedCurve.maxMs - elapsedSec * timedCurve.rampPerSec;
-  return clamp(delay, timedCurve.minMs, timedCurve.maxMs);
+function timedSpawnDelayMs(s) {
+  return clamp(timedCurve.maxMs - s * timedCurve.rampPerSec, timedCurve.minMs, timedCurve.maxMs);
 }
-
-function trackingSpawnDelayMs(elapsedSec) {
-  const delay = trackingCurve.maxMs - elapsedSec * trackingCurve.rampPerSec;
-  return clamp(delay, trackingCurve.minMs, trackingCurve.maxMs);
+function trackingSpawnDelayMs(s) {
+  return clamp(trackingCurve.maxMs - s * trackingCurve.rampPerSec, trackingCurve.minMs, trackingCurve.maxMs);
 }
 
 /* =========================
-   6) High score helpers
+   8) High scores
    ========================= */
 function loadRecord(key) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
-
 function saveRecord(key, record) {
-  localStorage.setItem(key, JSON.stringify(record));
+  try { localStorage.setItem(key, JSON.stringify(record)); } catch {}
 }
-
-// Compare: points > accuracy > center hits
-function isBetterScore(candidate, current) {
-  if (!current) return true;
-  if (candidate.points !== current.points) return candidate.points > current.points;
-  if (candidate.accuracy !== current.accuracy) return candidate.accuracy > current.accuracy;
-  return candidate.hitsCenter > current.hitsCenter;
+function isBetterScore(c, cur) {
+  if (!cur) return true;
+  if (c.points !== cur.points) return c.points > cur.points;
+  if (c.accuracy !== cur.accuracy) return c.accuracy > cur.accuracy;
+  return c.hitsCenter > cur.hitsCenter;
 }
-
 function formatDate(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
-  } catch {
-    return "";
-  }
+  try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "2-digit" }); }
+  catch { return ""; }
 }
-
+function recordHTML(r) {
+  if (!r) return `<span class="dim">no run yet</span>`;
+  const react = r.reactBest ? ` · <span class="dim">${r.reactBest}ms</span>` : "";
+  return `${r.points} pts · ${formatPercent(r.accuracy)}${react} <span class="dim">· ${formatDate(r.date)}</span>`;
+}
 function renderHighScores() {
-  const timed = loadRecord(LS_KEY_TIMED);
-  const tracking = loadRecord(LS_KEY_TRACKING);
-
-  highTimedValue.textContent = timed
-    ? `${timed.points} pts • ${formatPercent(timed.accuracy)} • C:${timed.hitsCenter} • ${formatDate(timed.date)}`
-    : "—";
-
-  highTrackingValue.textContent = tracking
-    ? `${tracking.points} pts • ${formatPercent(tracking.accuracy)} • C:${tracking.hitsCenter} • ${formatDate(tracking.date)}`
-    : "—";
+  highTimedValue.innerHTML = recordHTML(loadRecord(LS_KEY_TIMED));
+  highTrackingValue.innerHTML = recordHTML(loadRecord(LS_KEY_TRACKING));
 }
 
 /* =========================
-   7) Overlay
+   9) Overlay
    ========================= */
-function showOverlay(title, lines = []) {
+function showIntro() {
+  const tracking = modeTracking.checked;
+  const eyebrow = tracking ? "Tracking mode" : "Timed mode";
+  const body = tracking
+    ? [
+        "Targets drift and carry HP — every hit is damage, every point is progress.",
+        "Center hits land 2, outer hits land 1. Shields, if on, soak one hit for a flat point.",
+        "Let more than <strong>5 targets</strong> crowd the field and the run ends.",
+      ]
+    : [
+        "Targets shrink and vanish after 3 seconds — drop them before they do.",
+        "Center hits score <strong>2</strong>, outer hits score <strong>1</strong>.",
+        "Five targets slip away and the run ends. No score saved.",
+      ];
+  showOverlay({ eyebrow, title: "Bullseye", lines: body, hint: keyHint() });
+}
+function keyHint() {
+  return `<kbd>Space</kbd> start · <kbd>P</kbd> pause · <kbd>Esc</kbd> stop`;
+}
+function showOverlay({ eyebrow = "", title, lines = [], results = null, hint = "", titleClass = "" }) {
   overlay.style.display = "grid";
-
-  const paragraphs = lines.map((t) => `<p class="overlay__text">${t}</p>`).join("");
-
+  const para = lines.map((t) => `<p class="overlay__text">${t}</p>`).join("");
+  const resultsHTML = results
+    ? `<div class="results">${results
+        .map((c) => `<div class="results__cell"><div class="results__k">${c.k}</div><div class="results__v" style="${c.color ? `color:${c.color}` : ""}">${c.v}</div></div>`)
+        .join("")}</div>`
+    : "";
   overlay.innerHTML = `
     <div class="overlay__card">
-      <h1 class="overlay__title">${title}</h1>
-      ${paragraphs}
-      <p class="overlay__hint">Press <strong>Start</strong> to play.</p>
-    </div>
-  `;
+      ${eyebrow ? `<div class="overlay__eyebrow">${eyebrow}</div>` : ""}
+      <h1 class="overlay__title ${titleClass}">${title}</h1>
+      ${para}
+      ${resultsHTML}
+      ${hint ? `<p class="overlay__hint">${hint}</p>` : ""}
+    </div>`;
 }
-
-function hideOverlay() {
-  overlay.style.display = "none";
-}
+function hideOverlay() { overlay.style.display = "none"; }
 
 /* =========================
-   8) HUD
+   10) HUD
    ========================= */
 function updateHUD(timeLeftMs) {
   pointsValue.textContent = String(points);
   accuracyValue.textContent = formatPercent(computeAccuracy());
-  expiredMissesValue.textContent = String(expiredMisses);
 
-  hitsOuterValue.textContent = String(hitsOuter);
-  hitsCenterValue.textContent = String(hitsCenter);
-  clickMissesValue.textContent = String(clickMisses);
+  const avg = avgReaction();
+  reactValue.textContent = avg === null ? "—" : String(avg);
 
-  if (hitsShieldValue) hitsShieldValue.textContent = String(hitsShield);
+  timeValue.textContent = Math.max(0, (timeLeftMs ?? currentTimeLeftMs()) / 1000).toFixed(1);
 
-  const secs = Math.max(0, timeLeftMs / 1000);
-  timeValue.textContent = secs.toFixed(1);
+  if (currentMode === "timed") {
+    livesLabel.textContent = "Lives";
+    livesValue.textContent = String(Math.max(0, EXPIRED_LIMIT - expiredMisses));
+  } else {
+    livesLabel.textContent = "Slots";
+    livesValue.textContent = String(Math.max(0, TRACKING_OVERWHELM_LIMIT - targets.length));
+  }
+}
+function pulse(el) {
+  el.classList.remove("is-pulse");
+  void el.offsetWidth; // restart animation
+  el.classList.add("is-pulse");
+}
+function setStatus(text) { telemetryStatus.textContent = text; }
+
+/* =========================
+   11) Impact FX
+   ========================= */
+function spawnFX(x, y, text, kind) {
+  const el = document.createElement("div");
+  el.className = `fx fx--${kind}`;
+  el.textContent = text;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 650);
+}
+function stageMissFlash() {
+  stage.classList.remove("is-miss");
+  void stage.offsetWidth;
+  stage.classList.add("is-miss");
 }
 
 /* =========================
-   9) Target DOM creation
+   12) Targets
    ========================= */
+function recordReaction(target, x, y) {
+  if (target.firstHitAt != null) return; // only first hit counts
+  target.firstHitAt = performance.now();
+  const ms = Math.round(target.firstHitAt - target.bornAtMs);
+  reactionSamples.push(ms);
+  pulse(reactValue);
+  const slow = ms >= REACT_SLOW;
+  spawnFX(x, y + 18, `${ms}ms`, slow ? "react is-slow" : "react");
+}
+
 function makeTargetElement({ id, x, y, size, shieldOn }) {
   const el = document.createElement("div");
   el.className = "target";
-
-  // Hide shield layer via class unless shield is active
-  if (!shieldOn) el.classList.add("is-shield-off");
-
   el.style.left = `${x}px`;
   el.style.top = `${y}px`;
   el.style.setProperty("--size", `${size}px`);
-
-  el.innerHTML = `
-    <img class="target__bullseye" src="bullseye.svg" alt="" draggable="false" />
-  `;
+  el.innerHTML = `<img class="target__bullseye" src="bullseye.svg" alt="" draggable="false" />`;
   if (shieldOn) el.classList.add("has-shield");
 
-  // Use pointerdown everywhere to keep accuracy correct
   el.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!running || paused || countingDown) return;
 
-    if (!running) return;
-
-    // Determine hit region by distance from center
     const rect = el.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const outerRadius = rect.width / 2;
-    const centerRadius = outerRadius * CENTER_RADIUS_RATIO;
-
-    const isCenterHit = dist <= centerRadius;
+    const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+    const isCenterHit = dist <= (rect.width / 2) * CENTER_RADIUS_RATIO;
     const hitPoints = isCenterHit ? 2 : 1;
 
-    if (currentMode === "timed") {
-      // Timed scoring: normal points and delete immediately
-      if (isCenterHit) {
-        hitsCenter += 1;
-        points += 2;
-      } else {
-        hitsOuter += 1;
-        points += 1;
-      }
+    // FX position relative to the stage
+    const stageRect = stage.getBoundingClientRect();
+    const fxX = e.clientX - stageRect.left;
+    const fxY = e.clientY - stageRect.top;
 
+    const t = targets.find((tt) => tt.id === id);
+    if (!t) return;
+
+    if (currentMode === "timed") {
+      if (isCenterHit) { hitsCenter += 1; points += 2; sfx.center(); spawnFX(fxX, fxY, "+2", "center"); }
+      else { hitsOuter += 1; points += 1; sfx.outer(); spawnFX(fxX, fxY, "+1", "outer"); }
+      recordReaction(t, fxX, fxY);
+      pulse(pointsValue);
       removeTargetById(id);
       updateHUD(currentTimeLeftMs());
       return;
     }
 
-    // TRACKING MODE: points = damage (with shield rule)
-    const t = targets.find((x) => x.id === id);
-    if (!t) return;
-
+    // Tracking
     if (t.shieldHp > 0) {
-      // Shield absorbs: ALWAYS 1 point, counts as a hit for accuracy
-      hitsShield += 1;
-      points += 1;
-      t.shieldHp -= 1;
-
-      // If shield breaks, hide overlay
-      if (t.shieldHp <= 0) {
-          t.el.classList.remove("has-shield");
-        }
-
+      hitsShield += 1; points += 1; t.shieldHp -= 1;
+      sfx.shield(); spawnFX(fxX, fxY, "SHIELD", "shield");
+      recordReaction(t, fxX, fxY);
+      if (t.shieldHp === 1) t.el.classList.add("weak");
+      if (t.shieldHp <= 0) t.el.classList.remove("has-shield", "weak");
     } else {
-      // No shield: points = damage
-      if (isCenterHit) hitsCenter += 1;
-      else hitsOuter += 1;
-
+      if (isCenterHit) { hitsCenter += 1; sfx.center(); spawnFX(fxX, fxY, "+2", "center"); }
+      else { hitsOuter += 1; sfx.outer(); spawnFX(fxX, fxY, "+1", "outer"); }
       points += hitPoints;
       t.hp -= hitPoints;
-
-      if (t.shieldHp === 1) {
-          t.el.classList.add("weak");
-        }
-
-
-      if (t.hp <= 0) {
-        removeTargetById(id);
-      }
+      recordReaction(t, fxX, fxY);
+      if (t.hp <= 0) removeTargetById(id);
     }
-
+    pulse(pointsValue);
     updateHUD(currentTimeLeftMs());
   });
 
@@ -400,356 +453,364 @@ function removeTargetById(id) {
   targets[idx].el.remove();
   targets.splice(idx, 1);
 }
-
 function clearAllTargets() {
   for (const t of targets) t.el.remove();
   targets = [];
 }
 
 /* =========================
-   10) Timed mode update
+   13) Mode updates
    ========================= */
 function updateTargetsTimed(nowMs) {
   for (let i = targets.length - 1; i >= 0; i--) {
     const t = targets[i];
-
-    const age = nowMs - t.bornAtMs;
-    const progress = clamp(age / TARGET_LIFETIME_MS, 0, 1);
-
+    const progress = clamp((nowMs - t.bornAtMs) / TARGET_LIFETIME_MS, 0, 1);
     const size = t.startSize + (TARGET_MIN_SIZE - t.startSize) * progress;
     t.el.style.setProperty("--size", `${size}px`);
 
     if (nowMs >= t.expiresAtMs) {
       expiredMisses += 1;
+      sfx.expire();
       t.el.remove();
       targets.splice(i, 1);
-
-      if (expiredMisses >= EXPIRED_LIMIT) {
-        endGame("overwhelmed");
-        return;
-      }
+      if (expiredMisses >= EXPIRED_LIMIT) { endGame("overwhelmed"); return; }
     }
   }
 }
-
-/* =========================
-   11) Tracking mode update (movement)
-   ========================= */
 function updateTargetsTracking(dtSec) {
   const rect = stage.getBoundingClientRect();
-
   for (const t of targets) {
     t.x += t.vx * dtSec;
     t.y += t.vy * dtSec;
-
-    // Bounce off walls with padding based on radius
     const r = t.size / 2;
-
-    if (t.x < r) {
-      t.x = r;
-      t.vx *= -1;
-    } else if (t.x > rect.width - r) {
-      t.x = rect.width - r;
-      t.vx *= -1;
-    }
-
-    if (t.y < r) {
-      t.y = r;
-      t.vy *= -1;
-    } else if (t.y > rect.height - r) {
-      t.y = rect.height - r;
-      t.vy *= -1;
-    }
-
+    if (t.x < r) { t.x = r; t.vx *= -1; }
+    else if (t.x > rect.width - r) { t.x = rect.width - r; t.vx *= -1; }
+    if (t.y < r) { t.y = r; t.vy *= -1; }
+    else if (t.y > rect.height - r) { t.y = rect.height - r; t.vy *= -1; }
     t.el.style.left = `${t.x}px`;
     t.el.style.top = `${t.y}px`;
   }
 }
 
 /* =========================
-   12) Spawning
+   14) Spawning
    ========================= */
 function spawnTargetTimed() {
-  if (!running) return;
-
+  if (!running || paused) return;
   const rect = stage.getBoundingClientRect();
   const startSize = randInt(TARGET_START_SIZE_MIN, TARGET_START_SIZE_MAX);
-
-  const pad = startSize / 2 + 4;
+  const pad = startSize / 2 + 6;
   const x = randInt(Math.floor(pad), Math.floor(rect.width - pad));
   const y = randInt(Math.floor(pad), Math.floor(rect.height - pad));
-
   const id = crypto.randomUUID?.() ?? String(Date.now() + Math.random());
   const now = performance.now();
-
-  const el = makeTargetElement({
-    id,
-    x,
-    y,
-    size: startSize,
-    shieldOn: false,
-  });
-
+  const el = makeTargetElement({ id, x, y, size: startSize, shieldOn: false });
   stage.appendChild(el);
-
-  targets.push({
-    id,
-    el,
-    bornAtMs: now,
-    expiresAtMs: now + TARGET_LIFETIME_MS,
-    startSize,
-  });
+  targets.push({ id, el, bornAtMs: now, expiresAtMs: now + TARGET_LIFETIME_MS, startSize, firstHitAt: null });
 }
-
 function scheduleNextSpawnTimed() {
-  if (!running) return;
-
-  const delay = timedSpawnDelayMs(elapsedSeconds(performance.now()));
-
+  if (!running || paused) return;
   spawnTimeoutId = setTimeout(() => {
     spawnTargetTimed();
     scheduleNextSpawnTimed();
-  }, delay);
+  }, timedSpawnDelayMs(elapsedSeconds(performance.now())));
 }
-
 function spawnTargetTracking() {
-  if (!running) return;
-
+  if (!running || paused) return;
   const rect = stage.getBoundingClientRect();
   const size = randInt(TRACKING_SIZE_MIN, TRACKING_SIZE_MAX);
-
-  const pad = size / 2 + 4;
+  const pad = size / 2 + 6;
   const x = randInt(Math.floor(pad), Math.floor(rect.width - pad));
   const y = randInt(Math.floor(pad), Math.floor(rect.height - pad));
-
-  // Velocity in px/sec (feel free to tune)
   const speed = randInt(80, 150);
   const angle = Math.random() * Math.PI * 2;
-  const vx = Math.cos(angle) * speed;
-  const vy = Math.sin(angle) * speed;
-
   const id = crypto.randomUUID?.() ?? String(Date.now() + Math.random());
-
   const shieldOn = !!shieldsToggle.checked;
-
-  const el = makeTargetElement({
-    id,
-    x,
-    y,
-    size,
-    shieldOn,
-  });
-
+  const el = makeTargetElement({ id, x, y, size, shieldOn });
   stage.appendChild(el);
-
   targets.push({
-    id,
-    el,
-    x,
-    y,
-    vx,
-    vy,
-    size,
-    hp: TRACKING_TARGET_HP,
-    shieldHp: shieldOn ? TRACKING_SHIELD_HP : 0,
+    id, el, x, y,
+    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+    size, hp: TRACKING_TARGET_HP, shieldHp: shieldOn ? TRACKING_SHIELD_HP : 0,
+    bornAtMs: performance.now(), firstHitAt: null,
   });
-
-  // Overwhelm rule for tracking
-  if (targets.length > TRACKING_OVERWHELM_LIMIT) {
-    endGame("overwhelmed");
-  }
+  updateHUD(currentTimeLeftMs());
+  if (targets.length > TRACKING_OVERWHELM_LIMIT) endGame("overwhelmed");
 }
-
 function scheduleNextSpawnTracking() {
-  if (!running) return;
-
-  const delay = trackingSpawnDelayMs(elapsedSeconds(performance.now()));
-
+  if (!running || paused) return;
   spawnTimeoutId = setTimeout(() => {
     spawnTargetTracking();
     scheduleNextSpawnTracking();
-  }, delay);
+  }, trackingSpawnDelayMs(elapsedSeconds(performance.now())));
 }
 
 /* =========================
-   13) Start / End
+   15) Start / countdown / end
    ========================= */
 function resetStats() {
-  points = 0;
-  hitsOuter = 0;
-  hitsCenter = 0;
-  hitsShield = 0;
-  clickMisses = 0;
-  expiredMisses = 0;
+  points = 0; hitsOuter = 0; hitsCenter = 0; hitsShield = 0;
+  clickMisses = 0; expiredMisses = 0; reactionSamples = [];
 }
 
 function startGame() {
-  currentMode = modeTimed.checked ? "timed" : "tracking";
+  ensureAudio();
+  stopEverything();            // clean any prior run/countdown
+  currentMode = modeTracking.checked ? "tracking" : "timed";
   applyDifficultyFromUI();
-
-  running = true;
   resetStats();
   clearAllTargets();
-
-  startBtn.disabled = true;
-  restartBtn.disabled = false;
-
   hideOverlay();
 
-  startTimeMs = performance.now();
-  lastTickMs = startTimeMs;
+  telemetryMode.textContent = currentMode.toUpperCase();
+  updateHUD(GAME_MS);
 
-  if (currentMode === "timed") {
-    scheduleNextSpawnTimed();
-  } else {
-    scheduleNextSpawnTracking();
-  }
+  startBtn.disabled = true;
+  startBtn.textContent = "Restart";
+  restartBtn.disabled = true;
+  paused = false;
 
-  rafId = requestAnimationFrame(tick);
+  runCountdown(() => {
+    running = true;
+    startBtn.disabled = false; // allow Restart during run
+    restartBtn.disabled = false;
+    restartBtn.textContent = "Pause";
+    setStatus("LIVE");
+    startTimeMs = performance.now();
+    lastTickMs = startTimeMs;
+    if (currentMode === "timed") scheduleNextSpawnTimed();
+    else scheduleNextSpawnTracking();
+    rafId = requestAnimationFrame(tick);
+  });
+}
+
+function runCountdown(onDone) {
+  countingDown = true;
+  setStatus("GET READY");
+  countdownEl.classList.remove("is-hidden");
+  const steps = ["3", "2", "1"];
+  steps.forEach((n, i) => {
+    countdownTimers.push(setTimeout(() => {
+      countdownNum.textContent = n;
+      countdownNum.style.animation = "none";
+      void countdownNum.offsetWidth;
+      countdownNum.style.animation = "";
+      sfx.tick();
+    }, i * 700));
+  });
+  countdownTimers.push(setTimeout(() => {
+    countingDown = false;
+    countdownEl.classList.add("is-hidden");
+    sfx.go();
+    onDone();
+  }, steps.length * 700));
 }
 
 function endGame(reason) {
   if (!running) return;
-
   running = false;
-
-  if (spawnTimeoutId) {
-    clearTimeout(spawnTimeoutId);
-    spawnTimeoutId = null;
-  }
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
+  paused = false;
+  clearTimers();
+  clearAllTargets();
 
   startBtn.disabled = false;
-  restartBtn.disabled = false;
-
-  clearAllTargets();
+  startBtn.textContent = "Start";
+  restartBtn.disabled = true;
+  restartBtn.textContent = "Pause";
+  setStatus("STANDBY");
 
   const acc = computeAccuracy();
   const record = {
-    points,
-    accuracy: acc,
-    hitsCenter,
-    date: new Date().toISOString(),
+    points, accuracy: acc, hitsCenter,
+    reactBest: bestReaction(), date: new Date().toISOString(),
   };
-
   const modeLabel = currentMode === "timed" ? "Timed" : "Tracking";
 
   if (reason === "finished") {
     const key = currentMode === "timed" ? LS_KEY_TIMED : LS_KEY_TRACKING;
-    const currentHigh = loadRecord(key);
-
-    if (isBetterScore(record, currentHigh)) {
-      saveRecord(key, record);
-    }
-
+    const prev = loadRecord(key);
+    const isNewBest = isBetterScore(record, prev);
+    if (isNewBest) { saveRecord(key, record); sfx.newbest(); }
+    else { sfx.over(); }
     renderHighScores();
 
-    showOverlay(`${modeLabel} — Time!`, [
-      `Points: <strong>${points}</strong>`,
-      `Accuracy: <strong>${formatPercent(acc)}</strong>`,
-      `Center hits: <strong>${hitsCenter}</strong>`,
+    const results = [
+      { k: "Points", v: points, color: "var(--signal)" },
+      { k: "Accuracy", v: formatPercent(acc) },
+      { k: "Avg react", v: avgReaction() === null ? "—" : `${avgReaction()}ms`, color: "var(--lock)" },
+      { k: "Best react", v: bestReaction() === null ? "—" : `${bestReaction()}ms` },
+      { k: "Center", v: hitsCenter },
       currentMode === "tracking"
-        ? `Shield hits: <strong>${hitsShield}</strong>`
-        : `Expired targets: <strong>${expiredMisses}</strong>`,
-      "Score saved only if it beat your high score.",
-    ]);
-  } else if (reason === "overwhelmed") {
-    showOverlay(`${modeLabel} — GAME OVER`, [
-      currentMode === "timed"
-        ? `You let <strong>${EXPIRED_LIMIT}</strong> targets expire.`
-        : `You exceeded <strong>${TRACKING_OVERWHELM_LIMIT}</strong> targets on screen.`,
-      "Scores are <strong>not recorded</strong> unless you finish all 60 seconds.",
-    ]);
-  } else {
-    showOverlay(`${modeLabel} — Run Ended`, ["Run ended early."]);
-  }
+        ? { k: "Shield hits", v: hitsShield }
+        : { k: "Expired", v: expiredMisses },
+    ];
 
+    showOverlay({
+      eyebrow: `${modeLabel} · complete`,
+      title: isNewBest ? "New best!" : "Time!",
+      titleClass: isNewBest ? "is-best" : "",
+      results,
+      hint: keyHint(),
+    });
+  } else if (reason === "overwhelmed") {
+    sfx.over();
+    showOverlay({
+      eyebrow: `${modeLabel} · run ended`,
+      title: "Game over",
+      titleClass: "is-over",
+      lines: [
+        currentMode === "timed"
+          ? `You let <strong>${EXPIRED_LIMIT}</strong> targets expire.`
+          : `More than <strong>${TRACKING_OVERWHELM_LIMIT}</strong> targets crowded the field.`,
+        "Scores only save when you finish all 60 seconds.",
+      ],
+      hint: keyHint(),
+    });
+  } else {
+    showIntro();
+  }
   updateHUD(0);
 }
 
 /* =========================
-   14) Main Tick
+   16) Pause / stop plumbing
+   ========================= */
+function clearTimers() {
+  if (spawnTimeoutId) { clearTimeout(spawnTimeoutId); spawnTimeoutId = null; }
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+}
+function clearCountdown() {
+  countdownTimers.forEach(clearTimeout);
+  countdownTimers = [];
+  countingDown = false;
+  countdownEl.classList.add("is-hidden");
+}
+function stopEverything() {
+  clearTimers();
+  clearCountdown();
+}
+
+function togglePause() {
+  if (!running) return;
+  if (!paused) {
+    paused = true;
+    pauseStartedMs = performance.now();
+    clearTimers();
+    restartBtn.textContent = "Resume";
+    setStatus("PAUSED");
+    showOverlay({
+      eyebrow: "Paused",
+      title: "Paused",
+      lines: ["Run is frozen — the clock waits for you."],
+      hint: `<kbd>P</kbd> resume · <kbd>Esc</kbd> stop`,
+    });
+  } else {
+    paused = false;
+    hideOverlay();
+    // shift the clock forward by the paused duration so time-left is fair
+    const pausedFor = performance.now() - pauseStartedMs;
+    startTimeMs += pausedFor;
+    lastTickMs = performance.now();
+    restartBtn.textContent = "Pause";
+    setStatus("LIVE");
+    if (currentMode === "timed") scheduleNextSpawnTimed();
+    else scheduleNextSpawnTracking();
+    rafId = requestAnimationFrame(tick);
+  }
+}
+
+function stopRun() {
+  if (!running && !countingDown) return;
+  if (countingDown) { stopEverything(); }
+  running = false;
+  paused = false;
+  stopEverything();
+  clearAllTargets();
+  startBtn.disabled = false;
+  startBtn.textContent = "Start";
+  restartBtn.disabled = true;
+  restartBtn.textContent = "Pause";
+  setStatus("STANDBY");
+  showIntro();
+  updateHUD(GAME_MS);
+}
+
+/* =========================
+   17) Main tick
    ========================= */
 function tick(nowMs) {
-  if (!running) return;
-
-  const elapsed = nowMs - startTimeMs;
-  const timeLeft = GAME_MS - elapsed;
-
-  if (timeLeft <= 0) {
-    updateHUD(0);
-    endGame("finished");
-    return;
-  }
+  if (!running || paused) return;
+  const timeLeft = GAME_MS - (nowMs - startTimeMs);
+  if (timeLeft <= 0) { updateHUD(0); endGame("finished"); return; }
 
   const dtSec = (nowMs - lastTickMs) / 1000;
   lastTickMs = nowMs;
 
-  if (currentMode === "timed") {
-    updateTargetsTimed(nowMs);
-  } else {
-    updateTargetsTracking(dtSec);
-  }
+  if (currentMode === "timed") updateTargetsTimed(nowMs);
+  else updateTargetsTracking(dtSec);
 
   updateHUD(timeLeft);
   rafId = requestAnimationFrame(tick);
 }
 
 /* =========================
-   15) Events
+   18) Events
    ========================= */
-
-// Stage miss clicks (counts toward accuracy as misses)
 stage.addEventListener("pointerdown", () => {
-  if (!running) return;
+  if (!running || paused || countingDown) return;
   clickMisses += 1;
+  sfx.miss();
+  stageMissFlash();
   updateHUD(currentTimeLeftMs());
 });
 
 startBtn.addEventListener("click", startGame);
 
 restartBtn.addEventListener("click", () => {
-  if (running) endGame("restart");
-  startGame();
+  if (running) togglePause();
 });
 
-difficultySlider.addEventListener("input", applyDifficultyFromUI);
+muteBtn.addEventListener("click", () => {
+  ensureAudio();
+  muted = !muted;
+  muteBtn.classList.toggle("is-muted", muted);
+  muteBtn.setAttribute("aria-label", muted ? "Sound off" : "Sound on");
+  if (!muted) sfx.tick();
+  saveSettings();
+});
+
+difficultySlider.addEventListener("input", () => { applyDifficultyFromUI(); saveSettings(); });
 
 function syncControls() {
-  const trackingSelected = modeTracking.checked;
-
-  // Show tracking options only if tracking is selected
-  trackingOptionsGroup.classList.toggle("is-hidden", !trackingSelected);
-
-  // Overlay message when not running
-  if (!running) {
-    if (trackingSelected) {
-      showOverlay("Bullseye — Tracking Mode", [
-        "Targets move and have HP.",
-        "Points = damage.",
-        "Optional shields: shield hits are always 1 point.",
-        "Lose if more than 5 targets are on screen.",
-      ]);
-    } else {
-      showOverlay("Bullseye — Timed Mode", [
-        "Targets shrink and expire after 3 seconds.",
-        "If 5 targets expire, it’s game over (no score saved).",
-        "Scoring: Outer = 1, Center = 2.",
-      ]);
-    }
-  }
+  const tracking = modeTracking.checked;
+  trackingOptionsGroup.classList.toggle("is-hidden", !tracking);
+  telemetryMode.textContent = tracking ? "TRACKING" : "TIMED";
+  if (!running && !countingDown) showIntro();
+  saveSettings();
 }
-
 modeTimed.addEventListener("change", syncControls);
 modeTracking.addEventListener("change", syncControls);
+shieldsToggle.addEventListener("change", saveSettings);
+
+// Keyboard: Space/Enter start, P pause, Esc stop
+window.addEventListener("keydown", (e) => {
+  const typing = ["INPUT", "TEXTAREA"].includes(e.target.tagName);
+  if (e.code === "Space" || e.code === "Enter") {
+    if (typing || e.target.tagName === "BUTTON") return; // let buttons handle their own
+    if (!running && !countingDown) { e.preventDefault(); startGame(); }
+  } else if (e.key.toLowerCase() === "p") {
+    if (running) { e.preventDefault(); togglePause(); }
+  } else if (e.key === "Escape") {
+    if (running || countingDown) { e.preventDefault(); stopRun(); }
+  }
+});
 
 /* =========================
-   16) Boot
+   19) Boot
    ========================= */
+loadSettings();
 applyDifficultyFromUI();
 renderHighScores();
+muteBtn.classList.toggle("is-muted", muted);
 syncControls();
 updateHUD(GAME_MS);

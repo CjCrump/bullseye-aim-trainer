@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bullseye">
+  <rect width="64" height="64" rx="14" fill="#0c0e10" />
+  <g fill="none" stroke="#ff6a2c" stroke-width="2.4" stroke-linecap="round">
+    <!-- corner range brackets -->
+    <path d="M12 20 V12 H20" />
+    <path d="M44 12 H52 V20" />
+    <path d="M52 44 V52 H44" />
+    <path d="M20 52 H12 V44" />
+  </g>
+  <circle cx="32" cy="32" r="15" fill="none" stroke="#e9eef2" stroke-width="2.4" />
+  <circle cx="32" cy="32" r="6.5" fill="#e23b2e" />
+  <circle cx="32" cy="32" r="2.2" fill="#ff6a2c" />
+</svg>
