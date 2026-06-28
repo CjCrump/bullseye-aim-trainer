@@ -3,6 +3,12 @@
    ----------------------------------------------------------
    Vanilla JS. No framework, no build step.
 
+   SCREENS (body[data-screen]):
+   - menu: mode / difficulty / shields / records / Start. All config + stats.
+   - play: full-bleed field + minimal strip (Points · Time). Nothing else.
+   Game-over shows a run summary overlay over the field with
+   Play again / Main menu.
+
    MODES
    - Timed:    targets shrink over 3s then expire. Lose 1 life per
                expired target; 5 expired = game over (no score saved).
@@ -13,10 +19,6 @@
    SCORING:  outer = 1pt, center = 2pt. Center radius = 0.4 of target.
    HIGH SCORES: saved only on finishing a full 60s run.
                ranked by points > accuracy > center hits.
-
-   v4 polish: 3·2·1 countdown, reaction-time tracking, synthesized
-   sound + mute, floating impact readouts, pause/resume, persisted
-   settings, new-best celebration.
    ========================================================== */
 
 /* =========================
@@ -28,11 +30,7 @@ const countdownEl = document.getElementById("countdown");
 const countdownNum = document.getElementById("countdownNum");
 
 const pointsValue = document.getElementById("pointsValue");
-const accuracyValue = document.getElementById("accuracyValue");
-const reactValue = document.getElementById("reactValue");
 const timeValue = document.getElementById("timeValue");
-const livesValue = document.getElementById("livesValue");
-const livesLabel = livesValue.parentElement.querySelector(".gauge__label");
 
 const highTimedValue = document.getElementById("highTimedValue");
 const highTrackingValue = document.getElementById("highTrackingValue");
@@ -41,8 +39,8 @@ const telemetryMode = document.getElementById("telemetryMode");
 const telemetryStatus = document.getElementById("telemetryStatus");
 
 const startBtn = document.getElementById("startBtn");
-const restartBtn = document.getElementById("restartBtn"); // doubles as Pause/Resume
 const muteBtn = document.getElementById("muteBtn");
+const menuHint = document.getElementById("menuHint");
 
 const modeTimed = document.getElementById("modeTimed");
 const modeTracking = document.getElementById("modeTracking");
@@ -152,6 +150,15 @@ function bestReaction() {
 function currentTimeLeftMs() {
   if (!running) return GAME_MS;
   return GAME_MS - (performance.now() - startTimeMs);
+}
+
+// Screen flips
+function setScreen(s) { document.body.dataset.screen = s; }
+function goMenu() { hideOverlay(); setScreen("menu"); }
+function updateMenuHint() {
+  menuHint.innerHTML = modeTracking.checked
+    ? "Targets drift and carry HP — every hit is damage. Center <strong>2</strong>, outer <strong>1</strong>. Let <strong>5+</strong> crowd the field and the run ends."
+    : "Targets shrink and vanish after 3s — drop them first. Center <strong>2</strong>, outer <strong>1</strong>. Five expire and the run ends.";
 }
 
 /* =========================
@@ -290,31 +297,20 @@ function renderHighScores() {
 /* =========================
    9) Overlay
    ========================= */
-function showIntro() {
-  const tracking = modeTracking.checked;
-  const eyebrow = tracking ? "Tracking mode" : "Timed mode";
-  const body = tracking
-    ? [
-        "Targets drift and carry HP — every hit is damage, every point is progress.",
-        "Center hits land 2, outer hits land 1. Shields, if on, soak one hit for a flat point.",
-        "Let more than <strong>5 targets</strong> crowd the field and the run ends.",
-      ]
-    : [
-        "Targets shrink and vanish after 3 seconds — drop them before they do.",
-        "Center hits score <strong>2</strong>, outer hits score <strong>1</strong>.",
-        "Five targets slip away and the run ends. No score saved.",
-      ];
-  showOverlay({ eyebrow, title: "Bullseye", lines: body, hint: keyHint() });
-}
 function keyHint() {
   return `<kbd>Space</kbd> start · <kbd>P</kbd> pause · <kbd>Esc</kbd> stop`;
 }
-function showOverlay({ eyebrow = "", title, lines = [], results = null, hint = "", titleClass = "" }) {
+function showOverlay({ eyebrow = "", title, lines = [], results = null, hint = "", titleClass = "", actions = [] }) {
   overlay.style.display = "grid";
   const para = lines.map((t) => `<p class="overlay__text">${t}</p>`).join("");
   const resultsHTML = results
     ? `<div class="results">${results
         .map((c) => `<div class="results__cell"><div class="results__k">${c.k}</div><div class="results__v" style="${c.color ? `color:${c.color}` : ""}">${c.v}</div></div>`)
+        .join("")}</div>`
+    : "";
+  const actionsHTML = actions.length
+    ? `<div class="overlay__actions">${actions
+        .map((a) => `<button class="btn ${a.primary ? "btn--primary" : "btn--ghost"}" data-action="${a.action}">${a.label}</button>`)
         .join("")}</div>`
     : "";
   overlay.innerHTML = `
@@ -323,30 +319,18 @@ function showOverlay({ eyebrow = "", title, lines = [], results = null, hint = "
       <h1 class="overlay__title ${titleClass}">${title}</h1>
       ${para}
       ${resultsHTML}
+      ${actionsHTML}
       ${hint ? `<p class="overlay__hint">${hint}</p>` : ""}
     </div>`;
 }
 function hideOverlay() { overlay.style.display = "none"; }
 
 /* =========================
-   10) HUD
+   10) HUD (strip: points + time)
    ========================= */
 function updateHUD(timeLeftMs) {
   pointsValue.textContent = String(points);
-  accuracyValue.textContent = formatPercent(computeAccuracy());
-
-  const avg = avgReaction();
-  reactValue.textContent = avg === null ? "—" : String(avg);
-
   timeValue.textContent = Math.max(0, (timeLeftMs ?? currentTimeLeftMs()) / 1000).toFixed(1);
-
-  if (currentMode === "timed") {
-    livesLabel.textContent = "Lives";
-    livesValue.textContent = String(Math.max(0, EXPIRED_LIMIT - expiredMisses));
-  } else {
-    livesLabel.textContent = "Slots";
-    livesValue.textContent = String(Math.max(0, TRACKING_OVERWHELM_LIMIT - targets.length));
-  }
 }
 function pulse(el) {
   el.classList.remove("is-pulse");
@@ -381,7 +365,6 @@ function recordReaction(target, x, y) {
   target.firstHitAt = performance.now();
   const ms = Math.round(target.firstHitAt - target.bornAtMs);
   reactionSamples.push(ms);
-  pulse(reactValue);
   const slow = ms >= REACT_SLOW;
   spawnFX(x, y + 18, `${ms}ms`, slow ? "react is-slow" : "react");
 }
@@ -561,20 +544,14 @@ function startGame() {
   resetStats();
   clearAllTargets();
   hideOverlay();
+  setScreen("play");
 
   telemetryMode.textContent = currentMode.toUpperCase();
   updateHUD(GAME_MS);
-
-  startBtn.disabled = true;
-  startBtn.textContent = "Restart";
-  restartBtn.disabled = true;
   paused = false;
 
   runCountdown(() => {
     running = true;
-    startBtn.disabled = false; // allow Restart during run
-    restartBtn.disabled = false;
-    restartBtn.textContent = "Pause";
     setStatus("LIVE");
     startTimeMs = performance.now();
     lastTickMs = startTimeMs;
@@ -613,10 +590,7 @@ function endGame(reason) {
   clearTimers();
   clearAllTargets();
 
-  startBtn.disabled = false;
   startBtn.textContent = "Start";
-  restartBtn.disabled = true;
-  restartBtn.textContent = "Pause";
   setStatus("STANDBY");
 
   const acc = computeAccuracy();
@@ -625,6 +599,11 @@ function endGame(reason) {
     reactBest: bestReaction(), date: new Date().toISOString(),
   };
   const modeLabel = currentMode === "timed" ? "Timed" : "Tracking";
+  const endActions = [
+    { label: "Play again", action: "again", primary: true },
+    { label: "Main menu", action: "menu" },
+  ];
+  const endHint = `<kbd>Space</kbd> again · <kbd>Esc</kbd> menu`;
 
   if (reason === "finished") {
     const key = currentMode === "timed" ? LS_KEY_TIMED : LS_KEY_TRACKING;
@@ -654,7 +633,8 @@ function endGame(reason) {
       title: isNewBest ? "New best!" : "Time!",
       titleClass: isNewBest ? "is-best" : "",
       results,
-      hint: keyHint(),
+      actions: endActions,
+      hint: endHint,
     });
   } else if (reason === "overwhelmed") {
     sfx.over();
@@ -668,10 +648,11 @@ function endGame(reason) {
           : `More than <strong>${TRACKING_OVERWHELM_LIMIT}</strong> targets crowded the field.`,
         "Scores only save when you finish all 60 seconds.",
       ],
-      hint: keyHint(),
+      actions: endActions,
+      hint: endHint,
     });
   } else {
-    showIntro();
+    goMenu();
   }
   updateHUD(0);
 }
@@ -700,12 +681,15 @@ function togglePause() {
     paused = true;
     pauseStartedMs = performance.now();
     clearTimers();
-    restartBtn.textContent = "Resume";
     setStatus("PAUSED");
     showOverlay({
       eyebrow: "Paused",
       title: "Paused",
       lines: ["Run is frozen — the clock waits for you."],
+      actions: [
+        { label: "Resume", action: "resume", primary: true },
+        { label: "Main menu", action: "menu" },
+      ],
       hint: `<kbd>P</kbd> resume · <kbd>Esc</kbd> stop`,
     });
   } else {
@@ -715,7 +699,6 @@ function togglePause() {
     const pausedFor = performance.now() - pauseStartedMs;
     startTimeMs += pausedFor;
     lastTickMs = performance.now();
-    restartBtn.textContent = "Pause";
     setStatus("LIVE");
     if (currentMode === "timed") scheduleNextSpawnTimed();
     else scheduleNextSpawnTracking();
@@ -730,12 +713,9 @@ function stopRun() {
   paused = false;
   stopEverything();
   clearAllTargets();
-  startBtn.disabled = false;
   startBtn.textContent = "Start";
-  restartBtn.disabled = true;
-  restartBtn.textContent = "Pause";
   setStatus("STANDBY");
-  showIntro();
+  goMenu();
   updateHUD(GAME_MS);
 }
 
@@ -770,8 +750,14 @@ stage.addEventListener("pointerdown", () => {
 
 startBtn.addEventListener("click", startGame);
 
-restartBtn.addEventListener("click", () => {
-  if (running) togglePause();
+// Overlay action buttons (Play again / Resume / Main menu)
+overlay.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-action]");
+  if (!b) return;
+  const a = b.dataset.action;
+  if (a === "again") startGame();
+  else if (a === "resume") togglePause();
+  else if (a === "menu") { if (running) stopRun(); else goMenu(); }
 });
 
 muteBtn.addEventListener("click", () => {
@@ -789,14 +775,14 @@ function syncControls() {
   const tracking = modeTracking.checked;
   trackingOptionsGroup.classList.toggle("is-hidden", !tracking);
   telemetryMode.textContent = tracking ? "TRACKING" : "TIMED";
-  if (!running && !countingDown) showIntro();
+  if (!running && !countingDown) updateMenuHint();
   saveSettings();
 }
 modeTimed.addEventListener("change", syncControls);
 modeTracking.addEventListener("change", syncControls);
 shieldsToggle.addEventListener("change", saveSettings);
 
-// Keyboard: Space/Enter start, P pause, Esc stop
+// Keyboard: Space/Enter start, P pause, Esc stop / exit to menu
 window.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA"].includes(e.target.tagName);
   if (e.code === "Space" || e.code === "Enter") {
@@ -806,6 +792,7 @@ window.addEventListener("keydown", (e) => {
     if (running) { e.preventDefault(); togglePause(); }
   } else if (e.key === "Escape") {
     if (running || countingDown) { e.preventDefault(); stopRun(); }
+    else if (document.body.dataset.screen === "play") { e.preventDefault(); goMenu(); }
   }
 });
 

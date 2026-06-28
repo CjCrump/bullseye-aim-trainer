@@ -18,120 +18,106 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
 
-  <body>
+  <body data-screen="menu">
     <main class="app" aria-label="Bullseye Aim Trainer">
-      <!-- ============ TOPBAR · instrument cluster ============ -->
-      <header class="topbar" aria-label="Stats">
-        <div class="brand">
-          <img class="brand__mark" src="favicon.svg" alt="" width="34" height="34" />
-          <div class="brand__text">
-            <div class="brand__eyebrow">ChanceITstudio</div>
-            <div class="brand__name">Bull<b>seye</b></div>
+      <!-- ============ MENU · options + records ============ -->
+      <section class="menu" aria-label="Menu">
+        <div class="menu__card">
+          <div class="brand">
+            <img class="brand__mark" src="favicon.svg" alt="" width="34" height="34" />
+            <div class="brand__text">
+              <div class="brand__eyebrow">ChanceITstudio</div>
+              <div class="brand__name">Bull<b>seye</b></div>
+            </div>
           </div>
-        </div>
 
-        <div class="gauges" aria-label="Current run">
-          <div class="gauge gauge--accent">
-            <div class="gauge__label">Points</div>
-            <div class="gauge__value" id="pointsValue">0</div>
-          </div>
-          <div class="gauge">
-            <div class="gauge__label">Accuracy</div>
-            <div class="gauge__value" id="accuracyValue">0%</div>
-          </div>
-          <div class="gauge gauge--react">
-            <div class="gauge__label">React ms</div>
-            <div class="gauge__value" id="reactValue">—</div>
-          </div>
-          <div class="gauge">
-            <div class="gauge__label">Time</div>
-            <div class="gauge__value" id="timeValue">60.0</div>
-          </div>
-          <div class="gauge gauge--warn">
-            <div class="gauge__label">Lives</div>
-            <div class="gauge__value" id="livesValue">5</div>
-          </div>
-        </div>
+          <p class="menu__hint" id="menuHint"></p>
 
-        <div class="records" aria-label="High scores">
-          <div class="record record--timed">
-            <div class="record__label">Best · Timed</div>
-            <div class="record__value" id="highTimedValue"><span class="dim">no run yet</span></div>
+          <div class="menu__controls">
+            <div class="field">
+              <span class="field__label">Mode</span>
+              <div class="segmented" role="radiogroup" aria-label="Mode">
+                <input type="radio" name="mode" id="modeTimed" value="timed" checked />
+                <label for="modeTimed">Timed</label>
+                <input type="radio" name="mode" id="modeTracking" value="tracking" />
+                <label for="modeTracking">Tracking</label>
+              </div>
+            </div>
+
+            <div class="field" id="trackingOptionsGroup">
+              <span class="field__label">Tracking</span>
+              <label class="switch">
+                <input type="checkbox" id="shieldsToggle" />
+                <span class="switch__track"></span>
+                <span class="switch__text">Shields</span>
+              </label>
+            </div>
+
+            <div class="field field--diff diff">
+              <div class="diff__head">
+                <span class="field__label">Difficulty</span>
+                <span class="diff__tier" id="difficultyTier">Sharp</span>
+              </div>
+              <input
+                id="difficultySlider"
+                class="slider"
+                type="range"
+                min="1" max="10" value="5" step="1"
+                aria-label="Difficulty"
+              />
+              <span class="diff__note" id="difficultyNote">Scales spawn rate in both modes</span>
+            </div>
           </div>
-          <div class="record record--tracking">
-            <div class="record__label">Best · Tracking</div>
-            <div class="record__value" id="highTrackingValue"><span class="dim">no run yet</span></div>
+
+          <div class="records" aria-label="High scores">
+            <div class="record record--timed">
+              <div class="record__label">Best · Timed</div>
+              <div class="record__value" id="highTimedValue"><span class="dim">no run yet</span></div>
+            </div>
+            <div class="record record--tracking">
+              <div class="record__label">Best · Tracking</div>
+              <div class="record__value" id="highTrackingValue"><span class="dim">no run yet</span></div>
+            </div>
           </div>
-        </div>
-      </header>
 
-      <!-- ============ STAGE · calibrated field ============ -->
-      <section class="stageWrap" aria-label="Play area">
-        <div id="stage" class="stage" role="application" tabindex="0" aria-label="Targets appear here">
-          <div class="stage__brackets" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
+          <div class="menu__actions">
+            <button id="muteBtn" class="mute" type="button" aria-label="Toggle sound" title="Sound on/off">♪</button>
+            <button id="startBtn" class="btn btn--primary" type="button">Start</button>
           </div>
-          <div class="stage__telemetry" aria-hidden="true">
-            MODE <b id="telemetryMode">TIMED</b> · <span id="telemetryStatus">STANDBY</span>
-          </div>
-        </div>
 
-        <!-- Countdown layer -->
-        <div id="countdown" class="countdown is-hidden" aria-hidden="true">
-          <div class="countdown__num" id="countdownNum">3</div>
-        </div>
-
-        <!-- Overlay: intro / results / game over -->
-        <div id="overlay" class="overlay" aria-live="polite"></div>
-      </section>
-
-      <!-- ============ CONSOLE · controls ============ -->
-      <section class="console" aria-label="Controls">
-        <div class="field">
-          <span class="field__label">Mode</span>
-          <div class="segmented" role="radiogroup" aria-label="Mode">
-            <input type="radio" name="mode" id="modeTimed" value="timed" checked />
-            <label for="modeTimed">Timed</label>
-            <input type="radio" name="mode" id="modeTracking" value="tracking" />
-            <label for="modeTracking">Tracking</label>
-          </div>
-        </div>
-
-        <div class="field" id="trackingOptionsGroup">
-          <span class="field__label">Tracking</span>
-          <label class="switch">
-            <input type="checkbox" id="shieldsToggle" />
-            <span class="switch__track"></span>
-            <span class="switch__text">Shields</span>
-          </label>
-        </div>
-
-        <div class="field field--diff diff">
-          <div class="diff__head">
-            <span class="field__label">Difficulty</span>
-            <span class="diff__tier" id="difficultyTier">Sharp</span>
-          </div>
-          <input
-            id="difficultySlider"
-            class="slider"
-            type="range"
-            min="1" max="10" value="5" step="1"
-            aria-label="Difficulty"
-          />
-          <span class="diff__note" id="difficultyNote">Scales spawn rate in both modes</span>
-        </div>
-
-        <div class="actions">
-          <button id="muteBtn" class="mute" type="button" aria-label="Toggle sound" title="Sound on/off">♪</button>
-          <button id="restartBtn" class="btn btn--ghost" type="button" disabled>Pause</button>
-          <button id="startBtn" class="btn btn--primary" type="button">Start</button>
+          <div class="menu__foot">BULLSEYE v4 · mouse + keyboard · <a href="https://chanceitstudio.com" target="_blank" rel="noopener">chanceitstudio.com</a></div>
         </div>
       </section>
 
-      <footer class="foot">
-        <span>BULLSEYE v4 · built for mouse + keyboard</span>
-        <span><a href="https://chanceitstudio.com" target="_blank" rel="noopener">chanceitstudio.com</a></span>
-      </footer>
+      <!-- ============ PLAY · minimal strip + field ============ -->
+      <section class="play" aria-label="Play">
+        <header class="strip">
+          <div class="strip__title">BULL<span>SEYE</span></div>
+          <div class="strip__stats">
+            <div class="stat"><span class="stat__k">Points</span><span class="stat__v" id="pointsValue">0</span></div>
+            <div class="stat"><span class="stat__k">Time</span><span class="stat__v" id="timeValue">60.0</span></div>
+          </div>
+        </header>
+
+        <section class="stageWrap" aria-label="Play area">
+          <div id="stage" class="stage" role="application" tabindex="0" aria-label="Targets appear here">
+            <div class="stage__brackets" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <div class="stage__telemetry" aria-hidden="true">
+              MODE <b id="telemetryMode">TIMED</b> · <span id="telemetryStatus">STANDBY</span>
+            </div>
+          </div>
+
+          <!-- Countdown layer -->
+          <div id="countdown" class="countdown is-hidden" aria-hidden="true">
+            <div class="countdown__num" id="countdownNum">3</div>
+          </div>
+
+          <!-- Overlay: pause / results / game over -->
+          <div id="overlay" class="overlay" aria-live="polite"></div>
+        </section>
+      </section>
     </main>
 
     <script src="hub-bridge.js" defer></script>

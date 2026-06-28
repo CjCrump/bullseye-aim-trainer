@@ -62,16 +62,7 @@ body {
 /* =========================
    1) App shell
    ========================= */
-.app {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 12px;
-  padding: 14px;
-  max-width: 1180px;
-  margin: 0 auto;
-}
+.app { min-height: 100vh; min-height: 100dvh; }
 
 /* =========================
    2) Topbar — instrument cluster
@@ -461,7 +452,6 @@ body {
   border-radius: var(--r);
 }
 .field--diff { flex: 1 1 220px; }
-.actions { margin-left: auto; }
 .field { display: grid; gap: 7px; }
 .field__label {
   font-family: var(--font-mono);
@@ -572,7 +562,6 @@ body {
 .switch__text { font-size: 13px; color: var(--ink); }
 
 /* Action buttons */
-.actions { display: flex; gap: 9px; align-items: center; }
 .btn {
   font-family: var(--font-display);
   font-weight: 700;
@@ -615,44 +604,7 @@ body {
 .is-hidden { display: none !important; }
 
 /* =========================
-   8) Footer
-   ========================= */
-.foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-  padding: 0 4px;
-}
-.foot a { color: var(--ink-dim); text-decoration: none; }
-.foot a:hover { color: var(--signal); }
-
-/* =========================
-   9) Responsive
-   ========================= */
-@media (max-width: 860px) {
-  .records { width: 100%; border-left: 0; padding-left: 0; }
-  .brand { border-right: 0; padding-right: 0; }
-}
-@media (max-width: 560px) {
-  .console { gap: 14px; }
-  .actions { width: 100%; }
-  .actions .btn--primary { flex: 1; }
-  .stage { min-height: 50vh; }
-}
-
-/* Pointer (touch) hint — built for mouse but playable on touch */
-@media (pointer: coarse) {
-  .stage { cursor: pointer; }
-}
-
-/* =========================
-   10) Reduced motion
+   8) Reduced motion
    ========================= */
 @media (prefers-reduced-motion: reduce) {
   .target,
@@ -662,3 +614,92 @@ body {
   .gauge__value.is-pulse,
   .stage.is-miss { animation: none !important; }
 }
+
+/* ==========================================================
+   9) Two-screen shell  (menu ⇄ play)
+   ---------------------------------------------------------- 
+   body[data-screen] flips which section is visible. Menu owns
+   all config + records; play is field-first with a minimal strip.
+   ========================================================== */
+body[data-screen="menu"] .play { display: none; }
+body[data-screen="play"] .menu { display: none; }
+
+/* ---- MENU ---- */
+.menu {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.menu__card {
+  width: 100%;
+  max-width: 560px;
+  padding: 22px 24px;
+  display: grid;
+  gap: 16px;
+  background: linear-gradient(180deg, var(--panel) 0%, #10151a 100%);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.menu .brand { border-right: 0; padding-right: 0; }
+.menu__hint { margin: 0; color: var(--ink-dim); line-height: 1.55; }
+.menu__hint strong { color: var(--ink); font-weight: 600; }
+.menu__controls { display: grid; gap: 16px; }
+.menu .records { border-left: 0; padding-left: 0; }
+.menu__actions { display: flex; gap: 9px; align-items: center; }
+.menu__actions .btn--primary { flex: 1; }
+.menu__foot {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+.menu__foot a { color: var(--ink-dim); text-decoration: none; }
+.menu__foot a:hover { color: var(--signal); }
+
+/* ---- PLAY ---- */
+.play { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto 1fr; }
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #14181c, #11161a);
+}
+.strip__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.strip__title span { color: var(--signal); }
+.strip__stats { display: flex; gap: 16px; }
+.stat { display: flex; align-items: baseline; gap: 6px; }
+.stat__k {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.stat__v {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--signal);
+  font-variant-numeric: tabular-nums;
+  min-width: 18px;
+  text-align: right;
+}
+.play .stageWrap { min-height: 0; }
+.play .stage { border: 0; border-radius: 0; min-height: 0; }
+
+/* game-over / pause overlay buttons */
+.overlay__actions { display: flex; gap: 9px; margin-top: 16px; }
+.overlay__actions .btn { flex: 1; }
