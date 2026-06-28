@@ -634,6 +634,10 @@ function endGame(reason) {
     else { sfx.over(); }
     renderHighScores();
 
+    // Report the completed run up to the games hub (no-op when not embedded).
+    window.HubBridge?.score({ mode: currentMode, points, accuracy: acc, reactBest: bestReaction() });
+    window.HubBridge?.event("run_finished", { mode: currentMode });
+
     const results = [
       { k: "Points", v: points, color: "var(--signal)" },
       { k: "Accuracy", v: formatPercent(acc) },
